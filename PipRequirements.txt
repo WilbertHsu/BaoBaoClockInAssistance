@@ -1,0 +1,4 @@
+apscheduler==3.6.3
+exchangelib==4.3.0
+selenium==3.141.0
+telepot==12.7
