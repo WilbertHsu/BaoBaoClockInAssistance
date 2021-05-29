@@ -42,7 +42,7 @@ ChatID   = Telegram 的 User ID
 ![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/SetupSelenium.png)  
   
 #### Step 4.1
-找微軟拿 Microsoft Edge Driver
+找微軟拿 Microsoft Edge Driver  
 [Link to Microsoft Edge Driver](https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/)  
   
 #### Step 4.2
