@@ -14,7 +14,7 @@ Account  = 帳號
 Password = 密碼  
 Domain   = VPN Domain  
 Email    = E-Mail 地址  
-VpnName  = VPN 名稱  
+VpnName  = 自訂的 VPN 名稱 (英文 only，不要空格，不要特殊字元)  
   
 ClockInServer  = 打卡網站  
 ExchangeServer = E-Mail Server  
@@ -24,10 +24,12 @@ VpnTestServer3 = 用來測試 VPN 連線的 server #3
   
 BotToken = Token from BotFather  
 ChatID   = Telegram 的 User ID  
-![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/TelegramBotAndId.jpg)  
+![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/TelegramBotAndId.png)  
   
 ### Step 3
-把寶寶餵給你吃的 VPN 連線檔複製一份到這裡，再用文字編輯器把第一行改成你 INI 裡設定的 VPN 名稱。  
+把寶寶餵給你吃的 VPN 連線檔複製一份到這裡。  
+把檔案名稱改成自訂的 VPN 名稱。  
+再用文字編輯器打開 VPN 連線檔 (*.PBK) 把第一行改成自訂的 VPN 名稱。  
 ![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/ChangePkbName.png)  
   
 ### Step 4
