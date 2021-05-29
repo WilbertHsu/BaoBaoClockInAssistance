@@ -1,6 +1,10 @@
 # BaoBaoClockInAssistance (寶寶懶得上線打卡)
 寶寶心裡苦，但寶寶要等三個禮拜才會說。  
   
+### Step 0
+安裝 Python，目前只測過 Python 3.9.4。  
+* `Add Python xxx to PATH` 記得選。  
+  
 ### Step 1
 寶寶有擋 PIP server，我想你知道該怎麼做  
 `pip install -r PipRequirements.txt`  
@@ -33,6 +37,29 @@ ChatID   = Telegram 的 User ID
 ![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/ChangePkbName.png)  
   
 ### Step 4
+建立 Selenium 環境，目前用的是 Portable Edge (Chromium) 喜歡用其它瀏覽器的寶寶可以自行修改。  
+* 注意版本一致性  
+![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/SetupSelenium.png)  
+  
+#### Step 4.1
+找微軟拿 Microsoft Edge Driver
+[Link to Microsoft Edge Driver](https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/)  
+  
+#### Step 4.2
+下載 Portable Edge (Chromium)  
+[Link to PorEdgeUpd by UndertakerBen](https://github.com/UndertakerBen/PorEdgeUpd/releases)  
+  
+#### Step 4.3
+把前兩步的東西放到對的地方，目錄結構參考：
+![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/FolderStruct.png)  
+
+
+### Step 5
+用文字編輯器打開 BaoBaoClockInAssistance.py 改一下打卡時間。  
+* 至少改一下 end_date  
+![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/ChnageClockInSchedule.png)  
+  
+### Step 6
 `python BaoBaoClockInAssistance.py`  
   
 ### TA-DA
