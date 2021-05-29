@@ -50,7 +50,7 @@ ChatID   = Telegram 的 User ID
 [Link to PorEdgeUpd by UndertakerBen](https://github.com/UndertakerBen/PorEdgeUpd/releases)  
   
 #### Step 4.3
-把前兩步的東西放到對的地方，目錄結構參考：
+把前兩步的東西放到對的地方，目錄結構參考：  
 ![image](https://github.com/WilbertHsu/BaoBaoClockInAssistance/blob/main/img/FolderStruct.png)  
 
 
