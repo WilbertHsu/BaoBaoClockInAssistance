@@ -283,4 +283,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-  testmain(sys.argv[1:])
+  main(sys.argv[1:])
