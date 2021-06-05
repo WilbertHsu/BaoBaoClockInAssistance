@@ -1,10 +1,11 @@
 import datetime
 import pathlib
 import sys
-import subprocess
 import time
 import configparser
-import shutil
+import random
+import string
+import io
 
 # Selenium.
 from selenium.webdriver.support.wait import WebDriverWait
@@ -23,6 +24,9 @@ from exchangelib import Account, Credentials, Message, Mailbox, FileAttachment, 
 # from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+# RecovertVPN
+from RecoveryVpnWithPy import RecoverVpnConnection
+
 # Current working path.
 PathOfCurrent = pathlib.Path(__file__).parent.absolute()
 
@@ -32,7 +36,10 @@ PathOfCurrent = pathlib.Path(__file__).parent.absolute()
 PrivateConfig = configparser.ConfigParser()
 PrivateConfig.read('Configuration.ini')
 
+MotpGettingOption = PrivateConfig['Options']['GetMotpNumberBy']
+
 # Telegram parameters.
+TelegramNotifySwitch = int(PrivateConfig['Telegram']['EnableTelegramNotify'])
 FixedChatID = PrivateConfig['Telegram']['ChatID']
 TelegramBot = telepot.Bot(PrivateConfig['Telegram']['BotToken'])
 StopTelepotBot = False
@@ -41,6 +48,7 @@ StopTelepotBot = False
 UserName = PrivateConfig['Uesr']['Account']
 UserPassword = PrivateConfig['Uesr']['Password']
 UserVpnName = PrivateConfig['Uesr']['VpnName']
+UserDomain = PrivateConfig['Uesr']['Domain']
 
 # VPN settings
 VpnTestServer1 = PrivateConfig['Server']['VpnTestServer1']
@@ -48,8 +56,9 @@ VpnTestServer2 = PrivateConfig['Server']['VpnTestServer2']
 VpnTestServer3 = PrivateConfig['Server']['VpnTestServer3']
 
 # Email settings
-UserMailAddress = PrivateConfig['Uesr']['Email']
-UserMailServer = PrivateConfig['Server']['ExchangeServer']
+EmailNotifySwitch = int(PrivateConfig['Mail']['EnableEmailNotify'])
+UserMailAddress = PrivateConfig['Mail']['Email']
+UserMailServer = PrivateConfig['Mail']['ExchangeServer']
 
 # Clock in server
 ClockInServer = PrivateConfig['Server']['ClockInServer']
@@ -58,20 +67,19 @@ ClockInServer = PrivateConfig['Server']['ClockInServer']
 VpnRetryLimit = 10
 
 
-# Recover VPN connection by using RecoverVPN.bat
-def RecoverVpnConnection(VpnMotpNum):
+# Recover VPN connection by using RecoveryVpnWithPy
+def RecoverVpn(UserMotpNum):
   print("[Action] Trying to recover VPN.")
   # Using the MOTP number to recover the VPN.
-  RecoverBatchProcess = subprocess.run(["call", "RecoverVPN.bat", UserVpnName, UserName, UserPassword, VpnMotpNum, VpnTestServer1, VpnTestServer2, VpnTestServer3],
-                                        cwd=PathOfCurrent,
-                                        shell=True
-                                      )
-  print("[Info] RecoverCompalOTP return code:", str(RecoverBatchProcess.returncode))
-  return RecoverBatchProcess.returncode
+  Status = RecoverVpnConnection(UserVpnName, UserName, UserPassword, UserMotpNum, UserDomain, VpnTestServer1, VpnTestServer2, VpnTestServer3)
+  print("[Info] RecoverVpnConnection return code:", str(Status))
+  return Status
+
 
 # Marco for sending message.
 def SendMsgToTelegram(msg):
-  TelegramBot.sendMessage(FixedChatID, str(msg), disable_notification=False)
+  if TelegramNotifySwitch == 1:
+    TelegramBot.sendMessage(FixedChatID, str(msg), disable_notification=False)
 
 
 # Telebot callback function.
@@ -83,7 +91,7 @@ def TelebotMsgCallback(msg):
   SendMsgToTelegram("MOTP: " + MotpNum + ", Got it!")
 
   # Using the MOTP number to recover the VPN.
-  Status = RecoverVpnConnection(MotpNum)
+  Status = RecoverVpn(MotpNum)
 
   # Stop the Telebot listener if VPN on-line.
   if Status == 0:
@@ -97,19 +105,88 @@ def TelebotMsgCallback(msg):
 
 # Start the Telepot to get the MOTP number from user.
 def GetMotpFromTelebot():
+  global StopTelepotBot
+
   SendMsgToTelegram("Need your attention.")
   SendMsgToTelegram("MOTP?")
   print("[Action] Telegram BOT is listening...")
+  
+  StopTelepotBot = False
   MessageLoop(TelegramBot, TelebotMsgCallback).run_as_thread()
   while StopTelepotBot == False:
     time.sleep(5)
 
 
+# Get MOTP number from command prompt.
+def GetMotpFromUser():
+  MotpNum = input("Need your attention.\nMOTP? ")
+
+  # Using the MOTP number to recover the VPN.
+  Status = RecoverVpn(MotpNum)
+  return Status
+
+# Get MOTP number from E-Mail
+def GetMotpFromMail():
+  print("[Action] Setup E-Mail Account")
+  my_credentials = Credentials(username=UserMailAddress, password=UserPassword)
+  my_config = Configuration(server=UserMailServer, credentials=my_credentials)
+  my_account = Account(primary_smtp_address=UserMailAddress, config=my_config,
+                        autodiscover=False, access_type=DELEGATE)
+
+  # Mail title & Body.
+  RandomString = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+  TitleStr = "[Test] Need your attention. " + RandomString
+  BodyString = "MOTP?"
+
+  print("[Action] Create a new mail item")
+  # Create mail item
+  item = Message(
+      account=my_account,
+      folder=my_account.sent,
+      subject=TitleStr,
+      body=BodyString,
+      to_recipients=[Mailbox(email_address=UserMailAddress)]
+  )
+
+  print("[Action] Send")
+  item.send()
+
+  print("[Info] Done, E-Mail Subject: [", TitleStr, "]")
+
+  WaitingForIt = True
+  while WaitingForIt == True:
+    # Delay
+    print("[Action] Waiting for the mail response.", end='\r', flush=True)
+    time.sleep(10)
+
+    # Include the mail contains specific subject.
+    UnreadMailBuffer = my_account.inbox.filter(subject__contains=TitleStr)
+
+    for MailBuffer in UnreadMailBuffer:
+      # Get first of line from mail
+      StringBuffer = io.StringIO(MailBuffer.text_body)
+      FirstLineOfMailBody = StringBuffer.readline()
+
+      # Exclude notify mail that has the same string.
+      if FirstLineOfMailBody != BodyString:
+        # Try to convert first of line to Integer, break loop if success.
+        try: 
+          MotpNum = int(FirstLineOfMailBody)
+          print("\nMOTP = ", MotpNum, ", Got it!")
+          WaitingForIt = False
+          break
+        except ValueError:
+          pass
+
+  # Using the MOTP number to recover the VPN.
+  Status = RecoverVpn(MotpNum)
+  return Status
+
 # Function for mailing.
 def MailMe(BodyString, Attachment):
   with open(Attachment, 'rb') as InputFileBuffer:
 
-    print("[Action] Create mail message")
+    print("[Action] Setup mail configurations.")
     my_credentials = Credentials(username=UserMailAddress, password=UserPassword)
     my_config = Configuration(server=UserMailServer, credentials=my_credentials)
     my_account = Account(primary_smtp_address=UserMailAddress, config=my_config,
@@ -118,7 +195,7 @@ def MailMe(BodyString, Attachment):
     # Mail title.
     TitleStr = "Clock In Report " + datetime.datetime.now().strftime('%H:%M')
 
-    print("[Action] Create a new item with an attachment")
+    print("[Action] Create a mail with an attachment.")
     # Create mail item
     item = Message(
         account=my_account,
@@ -135,9 +212,9 @@ def MailMe(BodyString, Attachment):
     item.save()
 
     print("[Action] Send")
-    item.send_and_save()
+    item.send()
 
-    print("[Action] Done, title: [", TitleStr, "]")
+    print("[Action] Done, E-Mail Subject: [", TitleStr, "]")
 
 
 # Clock in, Clock out.
@@ -150,6 +227,7 @@ def ClockInClockOut(TypeOfClockIn):
   EdgeOption.use_chromium = True
   EdgeOption.add_argument('headless')
   EdgeOption.add_argument('disable-gpu')
+  EdgeOption.add_experimental_option('excludeSwitches', ['enable-logging'])
   Browser = Edge(options = EdgeOption, executable_path=str(PathOfCurrent.joinpath('msedgedriver.exe')))
   Browser.implicitly_wait(3)
 
@@ -161,15 +239,19 @@ def ClockInClockOut(TypeOfClockIn):
       Browser.get(ClockInServer)
       VpnRetryError = None
     except:
-      global StopTelepotBot
-      print("[Action] Start Telegram TelegramBot to recover VPN")
-      StopTelepotBot = False
-      GetMotpFromTelebot()
+      if MotpGettingOption == "Telegram":
+        print("[Action] Start TelegramBot to recover VPN")
+        GetMotpFromTelebot()
+      elif MotpGettingOption == "Email":
+        print("[Action] Sending E-Mail to recover VPN")
+        GetMotpFromMail()
+      else:
+        GetMotpFromUser()
       pass
 
-    # Wait for 2 seconds before trying to fetch the data again
+    # Wait for 3 seconds before trying to fetch the data again
     if VpnRetryError:
-        time.sleep(2)
+        time.sleep(3)
     else:
         break
 
@@ -239,15 +321,19 @@ def ClockInClockOut(TypeOfClockIn):
       # Press the Cancel button
       BrowserAlert.accept()
 
+      ResultString = "[Web Time]" + TimeOfWeb.strftime("%H-%M-%S") + ", TypeOfClockIn: " + str(TypeOfClockIn) + ", Result: " + AlertText
+      print("[Info] Clock in success\n" + ResultString)
+      
       # Mail the result
-      MailString = "[Web Time]" + TimeOfWeb.strftime("%H-%M-%S") + ", TypeOfClockIn: " + str(TypeOfClockIn) + ", Result: " + AlertText
-      print("[Action] Notify user through E-Mail.")
-      MailMe(MailString, CaptureFile)
+      if EmailNotifySwitch == 1:
+        print("[Action] Notify user through E-Mail.")
+        MailMe(ResultString, CaptureFile)
 
       # Notify telegram user
-      print("[Action] Notify user through Telegram.")
-      SendMsgToTelegram("[Info] Clock in success\n" + MailString)
-      TelegramBot.sendPhoto(FixedChatID, photo=open(CaptureFile, 'rb'), disable_notification=False)
+      if TelegramNotifySwitch == 1:
+        print("[Action] Notify user through Telegram.")
+        SendMsgToTelegram("[Info] Clock in success\n" + ResultString)
+        TelegramBot.sendPhoto(FixedChatID, photo=open(CaptureFile, 'rb'), disable_notification=False)
 
   #Close browser
   Browser.switch_to.window(MainWindow)
