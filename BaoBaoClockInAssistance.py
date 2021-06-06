@@ -21,8 +21,8 @@ from telepot.loop import MessageLoop
 from exchangelib import Account, Credentials, Message, Mailbox, FileAttachment, DELEGATE, Configuration
 
 # Schedule clock in process.
-# from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 
 # RecovertVPN
 from RecoveryVpnWithPy import RecoverVpnConnection
@@ -65,6 +65,9 @@ ClockInServer = PrivateConfig['Server']['ClockInServer']
 
 # How many times of VPN retry.
 VpnRetryLimit = 10
+
+# Clock in job status
+ClockInClockOutStatus = False
 
 
 # Recover VPN connection by using RecoveryVpnWithPy
@@ -110,7 +113,7 @@ def GetMotpFromTelebot():
   SendMsgToTelegram("Need your attention.")
   SendMsgToTelegram("MOTP?")
   print("[Action] Telegram BOT is listening...")
-  
+
   StopTelepotBot = False
   MessageLoop(TelegramBot, TelebotMsgCallback).run_as_thread()
   while StopTelepotBot == False:
@@ -170,7 +173,7 @@ def GetMotpFromMail():
       # Exclude notify mail that has the same string.
       if FirstLineOfMailBody != BodyString:
         # Try to convert first of line to Integer, break loop if success.
-        try: 
+        try:
           MotpNum = int(FirstLineOfMailBody)
           print("\nMOTP = ", MotpNum, ", Got it!")
           WaitingForIt = False
@@ -219,6 +222,9 @@ def MailMe(BodyString, Attachment):
 
 # Clock in, Clock out.
 def ClockInClockOut(TypeOfClockIn):
+  global ClockInClockOutStatus
+  ClockInClockOutStatus = False
+
   print("[Info] Start clock in process, ClockIntype: ", str(TypeOfClockIn))
 
   # Launch Microsoft Edge (Chromium)
@@ -262,21 +268,26 @@ def ClockInClockOut(TypeOfClockIn):
   # Store main window in order to switch back when alert window pop up.
   MainWindow = Browser.current_window_handle
 
+  try:
+    print("[Action] Try to click health question.")
+    WebDriverWait(Browser, 10, 1).until(EC.presence_of_element_located((By.XPATH, './/span[@class = "Hour"]')))
+    Browser.find_element_by_xpath(".//input[@type='radio'][@value='Y']").click()
+    Browser.find_element_by_xpath(".//input[@type='button'][@name='send']").click()
+  except:
+    print("[Info] Not found any Health question, pass.")
+    pass
+
   # Try to get the web time from target site.
   try:
     print("[Action] Check if element is located.")
-    WebDriverWait(Browser, 1800, 1).until(EC.presence_of_element_located((By.XPATH, './/span[@class = "Hour"]')))
-  except:
-    pass  # Temporary ignore, maybe there will be another way to recovery this failure.
-  finally:
-    # Again, prevent it will sometime return exception when getting the H/M/S elements.
-    WebDriverWait(Browser, 1800, 1).until(EC.presence_of_element_located((By.XPATH, './/span[@class = "Hour"]')))
+    WebDriverWait(Browser, 10, 1).until(EC.presence_of_element_located((By.XPATH, './/span[@class = "Hour"]')))
     WebHour = Browser.find_element_by_xpath('.//span[@class = "Hour"]')
     WebMin = Browser.find_element_by_xpath('.//span[@class = "Min"]')
     WebSec = Browser.find_element_by_xpath('.//span[@class = "Second"]')
     print("[Info] Web Time -", WebHour.text, ":", WebMin.text, ":", WebSec.text)
-
     TimeOfWeb = datetime.time(int(WebHour.text), int(WebMin.text), int(WebSec.text))
+  except:
+    return "TimeElemenetNotFound"
 
   # Xpath depend on different type of clock in.
   if (TypeOfClockIn == 1):
@@ -289,15 +300,13 @@ def ClockInClockOut(TypeOfClockIn):
     ClockInBtnIdByXpath = "//*[@id='Type4']"
   else:
     print("[Failure] Not support.")
-    return
+    return "NotSupportClockInType"
 
   # Try to click clock in button.
   try:
     print("[Action] Try if clock in button is clickable.")
-    WebDriverWait(Browser, 1800, 1).until(EC.element_to_be_clickable((By.XPATH, ClockInBtnIdByXpath)))
-  except:
-    pass  # Temporary ignore, maybe there will be another way to recovery this failure.
-  finally:
+    WebDriverWait(Browser, 10, 1).until(EC.element_to_be_clickable((By.XPATH, ClockInBtnIdByXpath)))
+
     # Capture a screenshot as one of the result.
     StrOfCurrentTime = time.strftime("%m%d_%H-%M-%S_") + TimeOfWeb.strftime("%H-%M-%S") + ".png"
     CaptureFile = PathOfCurrent.joinpath(StrOfCurrentTime)
@@ -307,65 +316,93 @@ def ClockInClockOut(TypeOfClockIn):
     # clock in!
     print("[Action] Click.")
     Browser.find_element_by_xpath(ClockInBtnIdByXpath).click()
+  except:
+    return "ClockInButtonFailure"
 
-    # Wait for the alert to be displayed
-    try:
-      WebDriverWait(Browser, 1800, 1).until(EC.alert_is_present())
-    finally:
-      # Store the alert in a variable for reuse
-      BrowserAlert = Browser.switch_to.alert
+  # Wait for the alert to be displayed
+  try:
+    WebDriverWait(Browser, 10, 1).until(EC.alert_is_present())
 
-      # Store the alert text in a variable
-      AlertText = BrowserAlert.text
+    # Store the alert in a variable for reuse
+    BrowserAlert = Browser.switch_to.alert
 
-      # Press the Cancel button
-      BrowserAlert.accept()
+    # Store the alert text in a variable
+    AlertText = BrowserAlert.text
 
-      ResultString = "[Web Time]" + TimeOfWeb.strftime("%H-%M-%S") + ", TypeOfClockIn: " + str(TypeOfClockIn) + ", Result: " + AlertText
-      print("[Info] Clock in success\n" + ResultString)
-      
-      # Mail the result
-      if EmailNotifySwitch == 1:
-        print("[Action] Notify user through E-Mail.")
-        MailMe(ResultString, CaptureFile)
+    # Press the Cancel button
+    BrowserAlert.accept()
+  except:
+    return "AlertButtonFailure"
 
-      # Notify telegram user
-      if TelegramNotifySwitch == 1:
-        print("[Action] Notify user through Telegram.")
-        SendMsgToTelegram("[Info] Clock in success\n" + ResultString)
-        TelegramBot.sendPhoto(FixedChatID, photo=open(CaptureFile, 'rb'), disable_notification=False)
+  ResultString = "[Web Time]" + TimeOfWeb.strftime("%H-%M-%S") + ", TypeOfClockIn: " + str(TypeOfClockIn) + ", Result: " + AlertText
+  print("[Info] Clock in success\n" + ResultString)
+
+  # Mail the result
+  if EmailNotifySwitch == 1:
+    print("[Action] Notify user through E-Mail.")
+    MailMe(ResultString, CaptureFile)
+
+  # Notify telegram user
+  if TelegramNotifySwitch == 1:
+    print("[Action] Notify user through Telegram.")
+    SendMsgToTelegram("[Info] Clock in success\n" + ResultString)
+    TelegramBot.sendPhoto(FixedChatID, photo=open(CaptureFile, 'rb'), disable_notification=False)
 
   #Close browser
   Browser.switch_to.window(MainWindow)
   Browser.close()
+  ClockInClockOutStatus = True
+
+
+# Scheduler listener
+def SechdulerListener(InputEvent):
+  # TODO: Reschedule or loop till success
+  global ClockInClockOutStatus
+  if ClockInClockOutStatus == False:
+    CurrentJobId = str(InputEvent.job_id)
+    print("Directly trigger Job :", CurrentJobId)
+    SendMsgToTelegram("Directly trigger Job :", CurrentJobId)
+    time.sleep(10)
+    if CurrentJobId == "Morning":
+      ClockInClockOut(1)
+    elif CurrentJobId == "NapNap":
+      ClockInClockOut(2)
+    elif CurrentJobId == "Noon":
+      ClockInClockOut(3)
+    elif CurrentJobId == "NightNight":
+      ClockInClockOut(4)
+  pass
 
 
 # For testing or one time clock in.
 def testmain(argv):
-  ClockInClockOut(1)
-  # pass
+  # ClockInClockOut(4)
+  pass
+
 
 # Main
 def main(argv):
   # Add clock in schedules to scheduler
-  # TODO: Change to BackgroundScheduler with listener and an interactive menu (re-schedule or something...)
-  while True:
-    try:
-      print("[Action] Add jobs to schecduler.")
-      scheduler = BlockingScheduler()
-      scheduler.add_job(ClockInClockOut, 'cron', day_of_week='mon-fri', hour = 8, minute = 5, end_date = '2021-05-30', args=(1,))
-      scheduler.add_job(ClockInClockOut, 'cron', day_of_week='mon-fri', hour = 12, minute = 10, end_date = '2021-05-30', args=(2,))
-      scheduler.add_job(ClockInClockOut, 'cron', day_of_week='mon-fri', hour = 12, minute = 50, end_date = '2021-05-30', args=(3,))
-      scheduler.add_job(ClockInClockOut, 'cron', day_of_week='mon-fri', hour = 18, minute = 30, end_date = '2021-05-30', args=(4,))
-      print("[Action] Start schecduler.")
-      scheduler.start()
-    except Exception as ErrMsg:
-      print("[Failure] Throw out exception.")
-      print("[Action] Stop schecduler.")
-      SendMsgToTelegram("[Failure] clock in schedule error.")
-      SendMsgToTelegram(ErrMsg)
+  # TODO: Interactive menu (re-schedule or something...)
+
+  print("[Action] Add jobs to schecduler.")
+  scheduler = BackgroundScheduler()
+  scheduler.add_job(func = ClockInClockOut, trigger = 'cron', day_of_week = 'mon-fri', hour = 8, minute = 5, end_date = '2021-05-30', args = (1,), misfire_grace_time=1800, id = "Morning")
+  scheduler.add_job(func = ClockInClockOut, trigger = 'cron', day_of_week = 'mon-fri', hour = 12, minute = 10, end_date = '2021-05-30', args = (2,), misfire_grace_time=600, id = "NapNap")
+  scheduler.add_job(func = ClockInClockOut, trigger = 'cron', day_of_week = 'mon-fri', hour = 12, minute = 50, end_date = '2021-05-30', args = (3,), misfire_grace_time=600, id = "Noon")
+  scheduler.add_job(func = ClockInClockOut, trigger = 'cron', day_of_week = 'mon-fri', hour = 18, minute = 30, end_date = '2021-05-30', args = (4,), misfire_grace_time=1800, id = "NightNight")
+  scheduler.add_listener(SechdulerListener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+
+  print("[Action] Start schecduler.")
+  scheduler.start()
+  print("[Info] Schecduler started.")
+  print("[Info] Press Ctrl+ C to exit")
+
+  try:
+      while True:
+          time.sleep(1)
+  except (KeyboardInterrupt, SystemExit):
       scheduler.shutdown()
-      pass
 
 
 if __name__ == "__main__":
