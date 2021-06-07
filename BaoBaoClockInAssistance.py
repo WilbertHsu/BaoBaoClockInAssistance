@@ -270,9 +270,27 @@ def ClockInClockOut(TypeOfClockIn):
 
   try:
     print("[Action] Try to click health question.")
-    WebDriverWait(Browser, 10, 1).until(EC.presence_of_element_located((By.XPATH, './/span[@class = "Hour"]')))
-    Browser.find_element_by_xpath(".//input[@type='radio'][@value='Y']").click()
-    Browser.find_element_by_xpath(".//input[@type='button'][@name='send']").click()
+    WebDriverWait(Browser, 10, 1).until(EC.presence_of_element_located((By.XPATH, './/input[@type="radio"][@value="Y"]')))
+    try:
+      Browser.find_element_by_xpath(".//input[@type='radio'][@value='Y']").click()
+      Browser.find_element_by_xpath(".//input[@type='button'][@name='send']").click()
+    except:
+      return "HealthButtonFailure"
+    
+    # Wait for the alert to be displayed
+    try:
+      WebDriverWait(Browser, 10, 1).until(EC.alert_is_present())
+
+      # Store the alert in a variable for reuse
+      BrowserAlert = Browser.switch_to.alert
+
+      # Press the Cancel button
+      BrowserAlert.accept()
+    except:
+      pass
+    finally:
+      Browser.switch_to.window(MainWindow)
+
   except:
     print("[Info] Not found any Health question, pass.")
     pass
