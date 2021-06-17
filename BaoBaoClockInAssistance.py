@@ -6,6 +6,7 @@ import configparser
 import random
 import string
 import io
+import subprocess
 
 # Selenium.
 from selenium.webdriver.support.wait import WebDriverWait
@@ -68,6 +69,26 @@ VpnRetryLimit = 10
 
 # Clock in job status
 ClockInClockOutStatus = False
+
+
+# Kill msedgedriver.exe to avoid "WebDriverException: Message: chrome not reachable"
+# Ref.: https://blog.csdn.net/u013613428/article/details/82491576
+def KillProcess(TargetProcess):
+  print("[Action] Checking the existence of process:", TargetProcess)
+  # tasklist|find /I "!TargetProcess!" > NUL
+  BatchProcess = subprocess.run('tasklist|find /i "{0}" >NUL'.format(TargetProcess),
+                                cwd=PathOfCurrent,
+                                shell=True
+                            )
+  if BatchProcess.returncode == 0:
+    print("[Action] Killing process:", TargetProcess)
+    # taskkill /f /im "TargetProcess" /t
+    BatchProcess = subprocess.run('taskkill /f /im "{0}" /t'.format(TargetProcess),
+                                  cwd=PathOfCurrent,
+                                  shell=True
+                              )
+    print(BatchProcess.returncode)
+  return BatchProcess.returncode
 
 
 # Recover VPN connection by using RecoveryVpnWithPy
@@ -234,6 +255,9 @@ def ClockInClockOut(TypeOfClockIn):
   EdgeOption.add_argument('headless')
   EdgeOption.add_argument('disable-gpu')
   EdgeOption.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+  # Try to avoid "WebDriverException: Message: chrome not reachable"
+  Status = KillProcess('msedgedriver.exe')
   Browser = Edge(options = EdgeOption, executable_path=str(PathOfCurrent.joinpath('msedgedriver.exe')))
   Browser.implicitly_wait(3)
 
@@ -284,8 +308,14 @@ def ClockInClockOut(TypeOfClockIn):
       # Store the alert in a variable for reuse
       BrowserAlert = Browser.switch_to.alert
 
+      # Store the alert text in a variable
+      AlertText = BrowserAlert.text
+
       # Press the Cancel button
       BrowserAlert.accept()
+
+      print("[Info] Health question clicked, text:", AlertText)
+      SendMsgToTelegram("[Info] Health question clicked, text:" + AlertText)
     except:
       pass
     finally:
@@ -376,10 +406,14 @@ def ClockInClockOut(TypeOfClockIn):
 def SechdulerListener(InputEvent):
   # TODO: Reschedule or loop till success
   global ClockInClockOutStatus
+
   if ClockInClockOutStatus == False:
+    # Try to avoid "WebDriverException: Message: chrome not reachable"
+    Status = KillProcess('msedgedriver.exe')
+    SendMsgToTelegram("[Action] Killing WebDriver" + Status)
     CurrentJobId = str(InputEvent.job_id)
-    print("Directly trigger Job :", CurrentJobId)
-    SendMsgToTelegram("Directly trigger Job :", CurrentJobId)
+    print("[Action] Directly trigger Job :", CurrentJobId)
+    SendMsgToTelegram("[Action] Directly trigger Job :" + CurrentJobId)
     time.sleep(10)
     if CurrentJobId == "Morning":
       ClockInClockOut(1)
